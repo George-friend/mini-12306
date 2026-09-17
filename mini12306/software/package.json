@@ -1,0 +1,21 @@
+{
+  "name": "mini-12306",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mini-12306 简化版在线车票服务系统（软件工程基础实验课程项目）",
+  "scripts": {
+    "setup": "node scripts/ensure-env.mjs && npm --prefix apps/api install && npm --prefix apps/api run db:reset && npm --prefix apps/web install",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm --prefix apps/api run dev\" \"npm --prefix apps/web run dev\"",
+    "dev:api": "npm --prefix apps/api run dev",
+    "dev:web": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "db:reset": "npm --prefix apps/api run db:reset",
+    "test:e2e": "npm --prefix apps/api run test:e2e",
+    "test:ui": "node scripts/ui-check.mjs",
+    "test:ui:gallery": "node scripts/ui-check.mjs --gallery",
+    "check:api": "node scripts/check-api-usage.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

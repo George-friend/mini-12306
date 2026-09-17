@@ -1,0 +1,33 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+
+# 数据库（本地数据，不纳入版本管理；用 npm run setup 重建）
+apps/api/prisma/dev.db
+apps/api/prisma/dev.db-journal
+apps/api/prisma/*.db
+apps/api/prisma/*.db-journal
+apps/api/prisma/*.db-wal
+apps/api/prisma/*.db-shm
+
+# 环境变量（含本地密钥，示例见 apps/api/.env.example）
+.env
+.env.local
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+~$*.doc
+~$*.docx
+
+# 实验报告导出产物
+report/out/

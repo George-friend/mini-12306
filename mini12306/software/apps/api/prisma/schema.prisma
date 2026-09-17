@@ -1,0 +1,332 @@
+// Mini-12306 数据模型（SQLite + Prisma）
+// 说明：SQLite 不支持 Prisma enum，枚举值一律用 String 存储，取值见 docs/01 与 docs/05。
+// 表名统一映射为 snake_case 复数；金额字段一律以「分」为单位的整数。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── 用户账号（旅客 / 售票员 / 管理员）─────────────────────────────
+model User {
+  id             Int       @id @default(autoincrement())
+  username       String    @unique
+  passwordHash   String
+  realName       String
+  idCardCipher   String // AES-256-GCM 密文
+  idCardHash     String    @unique // HMAC-SHA256（确定性，用于唯一性校验与检索）
+  idCardSuffix   String // 证件号后 4 位，用于展示与检索
+  phone          String    @unique
+  bankCardLast4  String?
+  role           String    @default("PASSENGER") // PASSENGER | CLERK | ADMIN
+  status         String    @default("ACTIVE") // ACTIVE | FROZEN
+  isVerified     Boolean   @default(false)
+  loginFailCount Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  passengers Passenger[]
+  orders     Order[]
+
+  @@map("users")
+}
+
+// ── 乘车人档案 ────────────────────────────────────────────────
+model Passenger {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  name          String
+  idCardCipher  String
+  idCardHash    String
+  idCardSuffix  String
+  phone         String?
+  passengerType String   @default("ADULT") // ADULT | CHILD | STUDENT
+  isDefault     Boolean  @default(false)
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+
+  @@index([userId])
+  @@map("passengers")
+}
+
+// ── 车站 ─────────────────────────────────────────────────────
+model Station {
+  id       Int     @id @default(autoincrement())
+  code     String  @unique // 电报码
+  name     String
+  city     String
+  province String
+  pinyin   String
+  isActive Boolean @default(true)
+
+  trainsFrom Train[] @relation("fromStation")
+  trainsTo   Train[] @relation("toStation")
+
+  @@map("stations")
+}
+
+// ── 车次 ─────────────────────────────────────────────────────
+model Train {
+  id             Int     @id @default(autoincrement())
+  trainNo        String  @unique
+  trainType      String // G | D | T | K | Z
+  fromStationId  Int
+  toStationId    Int
+  departTime     String // "08:00"（固定发车时刻）
+  arriveTime     String // "12:30"
+  durationMin    Int
+  mileageKm      Int
+  basePriceCents Int // 基准价（二等座/硬座口径）
+  isActive       Boolean @default(true)
+
+  fromStation Station         @relation("fromStation", fields: [fromStationId], references: [id])
+  toStation   Station         @relation("toStation", fields: [toStationId], references: [id])
+  schedules   TrainSchedule[]
+
+  @@map("trains")
+}
+
+// ── 运行日（某个车次在某一天的实际运行实例）──────────────────────
+model TrainSchedule {
+  id           Int      @id @default(autoincrement())
+  trainId      Int
+  runDate      String // "2026-09-20"
+  status       String   @default("NORMAL") // NORMAL | DELAYED | CANCELLED
+  delayMinutes Int      @default(0)
+  note         String?
+  createdAt    DateTime @default(now())
+
+  train     Train           @relation(fields: [trainId], references: [id])
+  inventory SeatInventory[]
+  orders    Order[]
+
+  @@unique([trainId, runDate])
+  @@index([runDate])
+  @@map("train_schedules")
+}
+
+// ── 席别库存与票价 ────────────────────────────────────────────
+model SeatInventory {
+  id          Int    @id @default(autoincrement())
+  scheduleId  Int
+  seatClass   String // BUSINESS | FIRST | SECOND | SOFT_SLEEPER | HARD_SLEEPER | HARD_SEAT | STANDING
+  priceCents  Int
+  totalCount  Int
+  soldCount   Int    @default(0)
+  lockedCount Int    @default(0)
+  version     Int    @default(0) // 乐观锁版本号
+
+  schedule TrainSchedule @relation(fields: [scheduleId], references: [id])
+
+  @@unique([scheduleId, seatClass])
+  @@map("seat_inventory")
+}
+
+// ── 订单 ─────────────────────────────────────────────────────
+model Order {
+  id               Int       @id @default(autoincrement())
+  orderNo          String    @unique
+  userId           Int
+  scheduleId       Int
+  channel          String    @default("WEB") // WEB | APP | CLERK
+  passengerCount   Int
+  totalAmountCents Int
+  paidAmountCents  Int       @default(0)
+  status           String    @default("PENDING_PAYMENT")
+  idempotencyKey   String?   @unique
+  expireAt         DateTime
+  paidAt           DateTime?
+  remark           String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id])
+  schedule TrainSchedule @relation(fields: [scheduleId], references: [id])
+  items    OrderItem[]
+  payments Payment[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("orders")
+}
+
+// ── 车票（订单明细，退改的最小粒度）──────────────────────────────
+model OrderItem {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  passengerId   Int
+  passengerName String
+  idCardSuffix  String
+  seatClass     String
+  ticketType    String   @default("ADULT") // ADULT | CHILD | STUDENT
+  priceCents    Int
+  seatNo        String?
+  ticketStatus  String   @default("LOCKED")
+  changeCount   Int      @default(0)
+  changeSeq     Int      @default(0)
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  order       Order      @relation(fields: [orderId], references: [id])
+  passenger   Passenger  @relation(fields: [passengerId], references: [id])
+  refunds     Refund[]
+  changesOld  Change[]   @relation("oldItem")
+  changesNew  Change[]   @relation("newItem")
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ── 支付 / 退款流水 ────────────────────────────────────────────
+model Payment {
+  id          Int       @id @default(autoincrement())
+  paymentNo   String    @unique
+  orderId     Int
+  orderItemId Int?
+  type        String    @default("PAY") // PAY | REFUND | CHANGE_DIFF
+  amountCents Int
+  method      String    @default("MOCK_BANK") // MOCK_BANK | CASH | CLERK
+  status      String    @default("PENDING") // PENDING | SUCCESS | FAILED | CLOSED
+  outTradeNo  String    @unique
+  tradeNo     String?
+  paidAt      DateTime?
+  failReason  String?
+  createdAt   DateTime  @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+// ── 退票记录 ──────────────────────────────────────────────────
+model Refund {
+  id                Int      @id @default(autoincrement())
+  refundNo          String   @unique
+  orderItemId       Int
+  applyAt           DateTime @default(now())
+  departAt          DateTime
+  hoursBeforeDepart Float
+  feeRateBp         Int // 万分比？不——此处为「百分比 × 100」，即 500 表示 5%
+  feeCents          Int
+  refundCents       Int
+  reason            String?
+  status            String   @default("APPLYING") // APPLYING | SUCCESS | FAILED
+  operatorId        Int?
+  createdAt         DateTime @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+
+  @@map("refunds")
+}
+
+// ── 改签记录 ──────────────────────────────────────────────────
+model Change {
+  id             Int      @id @default(autoincrement())
+  changeNo       String   @unique
+  orderItemId    Int
+  newOrderItemId Int?
+  fromScheduleId Int
+  toScheduleId   Int
+  fromSeatClass  String
+  toSeatClass    String
+  fromPriceCents Int
+  toPriceCents   Int
+  diffCents      Int
+  diffType       String // PAY | REFUND | NONE
+  feeCents       Int      @default(0)
+  status         String   @default("SUCCESS") // PENDING_PAY | SUCCESS | FAILED
+  operatorId     Int?
+  createdAt      DateTime @default(now())
+
+  orderItem   OrderItem  @relation("oldItem", fields: [orderItemId], references: [id])
+  newOrderItem OrderItem? @relation("newItem", fields: [newOrderItemId], references: [id])
+
+  @@map("changes")
+}
+
+// ── 短信验证码 ────────────────────────────────────────────────
+model VerificationCode {
+  id        Int       @id @default(autoincrement())
+  phone     String
+  scene     String // REGISTER | LOGIN | RESET | CHANGE
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  sendCount Int       @default(1)
+  createdAt DateTime  @default(now())
+
+  @@index([phone, scene])
+  @@map("verification_codes")
+}
+
+// ── 实名核验留痕 ──────────────────────────────────────────────
+model IdentityVerification {
+  id                Int      @id @default(autoincrement())
+  userId            Int?
+  realName          String
+  idCardSuffix      String
+  provider          String   @default("mock-identity")
+  providerRequestId String
+  result            String // PASS | FAIL | ERROR
+  failReason        String?
+  elapsedMs         Int
+  createdAt         DateTime @default(now())
+
+  @@map("identity_verifications")
+}
+
+// ── 公告 ─────────────────────────────────────────────────────
+model Announcement {
+  id          Int       @id @default(autoincrement())
+  title       String
+  content     String
+  type        String    @default("NOTICE") // SYSTEM | DELAY | CANCEL | NOTICE
+  trainNo     String?
+  runDate     String?
+  status      String    @default("PUBLISHED") // DRAFT | PUBLISHED | OFFLINE
+  publisherId Int?
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("announcements")
+}
+
+// ── 系统参数 ──────────────────────────────────────────────────
+model SystemSetting {
+  key         String   @id
+  value       String
+  valueType   String   @default("STRING") // INT | STRING | BOOL
+  description String
+  groupName   String   @default("general")
+  updatedBy   Int?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// ── 审计日志 ──────────────────────────────────────────────────
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    Int?
+  actorName  String?
+  actorRole  String?
+  action     String
+  targetType String
+  targetId   String?
+  detail     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}

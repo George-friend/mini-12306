@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── 设计 Token（语义化 CSS 变量，便于统一换肤） ───────────────── */
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --border: #e2e8f0;
+  --primary: #1f6feb;
+  --primary-fg: #ffffff;
+  --danger: #e5484d;
+  --success: #0f9d58;
+  --warning: #f59e0b;
+  --radius: 12px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-[var(--bg)] text-[var(--fg)] font-sans antialiased;
+    margin: 0;
+  }
+  /* 键盘可见焦点（无障碍要求） */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tight;
+  }
+  /* 表格数字对齐更易读 */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-card;
+  }
+  /* 可点击卡片：悬停轻微上浮 */
+  .card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-pop;
+  }
+  /* 车票票根：左右各一个半圆缺口 + 中间的虚线分隔（高铁票视觉母题） */
+  .ticket {
+    @apply relative bg-white border border-[var(--border)] rounded-xl shadow-card;
+  }
+  .ticket::before,
+  .ticket::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    margin-top: -8px;
+    border-radius: 9999px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .ticket::before {
+    left: -9px;
+    clip-path: inset(0 0 0 50%);
+    border-right-color: transparent;
+  }
+  .ticket::after {
+    right: -9px;
+    clip-path: inset(0 50% 0 0);
+    border-left-color: transparent;
+  }
+  .ticket-divider {
+    @apply relative border-l border-dashed border-slate-300;
+  }
+  /* 蓝底网格底纹（页面背景，极淡） */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(15, 23, 42, 0.045) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+  /* 渐变文字 */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(100deg, #ffffff 12%, #bfdbfe 60%, #ffffff 96%);
+  }
+  /* 分区标题左侧色条 */
+  .section-bar {
+    @apply relative pl-3;
+  }
+  .section-bar::before {
+    content: '';
+    @apply absolute left-0 top-1 bottom-1 w-1 rounded-full bg-gradient-to-b from-brand-600 to-sky-400;
+  }
+  .input {
+    @apply w-full h-10 px-3 rounded-lg border border-[var(--border)] bg-white text-sm
+           placeholder:text-slate-400 focus:border-brand-500 focus:ring-0 focus:outline-none;
+  }
+  .label {
+    @apply block text-xs font-medium text-[var(--fg-muted)] mb-1.5;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg text-sm font-medium
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-ghost {
+    @apply btn border border-[var(--border)] bg-white text-slate-700 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn border border-red-200 bg-white text-red-600 hover:bg-red-50;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-xs rounded-md;
+  }
+  .th {
+    @apply text-left text-xs font-medium text-[var(--fg-muted)] px-4 py-3 bg-slate-50/80 border-b border-[var(--border)];
+  }
+  .td {
+    @apply text-sm px-4 py-3 border-b border-slate-100 align-middle;
+  }
+  .badge {
+    @apply inline-flex items-center h-6 px-2 rounded-md text-xs font-medium;
+  }
+}
+
+/* 入场动画（尊重系统的"减少动态效果"设置） */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise-in {
+  animation: riseIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .card-hover {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+/* 打印友好：导出原型截图/报告时隐藏导航 */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
